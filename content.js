@@ -1,22 +1,58 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startSaving') {
-    console.log('Starting to save the book with specific iframe selection...');
+    console.log('Starting to save the book with polling for iframe...');
     startSaving();
   }
 });
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function getIframeByXPath(xpath) {
   const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
   return result.singleNodeValue;
 }
 
+/**
+ * Waits for an element to exist in the DOM.
+ * @param {string} xpath The XPath of the element to wait for.
+ * @param {number} timeout The maximum time to wait in milliseconds.
+ * @returns {Promise<Element>} A promise that resolves with the element when it is found.
+ */
+function waitForElement(xpath, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    const intervalTime = 100; // Check every 100ms
+    let elapsedTime = 0;
+
+    const interval = setInterval(() => {
+      const element = getIframeByXPath(xpath);
+      if (element && element.contentDocument && element.contentDocument.body) {
+        clearInterval(interval);
+        resolve(element);
+      } else {
+        elapsedTime += intervalTime;
+        if (elapsedTime >= timeout) {
+          clearInterval(interval);
+          reject(new Error(`Timeout: Element with XPath "${xpath}" not found or not ready after ${timeout}ms`));
+        }
+      }
+    }, intervalTime);
+  });
+}
+
 async function startSaving() {
   let bookTitle = document.querySelector('h1')?.innerText || document.querySelector('.title-text')?.innerText || 'Untitled_Book';
   bookTitle = bookTitle.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+
+  const iframeXPath = "/html/body/div[1]/div[2]/div/div[1]/div[1]/div/div/div[2]/div[1]/div/div/iframe";
+  let iframe;
+
+  try {
+    console.log('Waiting for the book iframe to load...');
+    iframe = await waitForElement(iframeXPath, 20000); // Wait up to 20 seconds
+    console.log('Book iframe found. Starting capture process.');
+  } catch (error) {
+    console.error(error.message);
+    alert('Could not find the book iframe. Please make sure the book is fully loaded and try again.');
+    return;
+  }
 
   let previousPageHTML = '';
   let currentPageHTML = '';
@@ -26,16 +62,8 @@ async function startSaving() {
     pageCount++;
     console.log(`Processing page ${pageCount}`);
 
-    await delay(2000);
-
-    const iframeXPath = "/html/body/div[1]/div[2]/div/div[1]/div[1]/div/div/div[2]/div[1]/div/div/iframe";
-    const iframe = getIframeByXPath(iframeXPath);
-
-    if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
-      console.error('Could not find the book iframe using the provided XPath.');
-      alert('Could not find the book iframe. Cannot continue.');
-      return;
-    }
+    // Delay for page content to settle after turning
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     const iframeDoc = iframe.contentDocument;
     currentPageHTML = iframeDoc.body.innerHTML;
