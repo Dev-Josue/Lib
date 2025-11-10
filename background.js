@@ -1,6 +1,5 @@
 importScripts('jszip.min.js');
 
-// Listener to clear storage when a new session starts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'clearScreenshots') {
     chrome.storage.local.set({ screenshots: [] }, () => {
@@ -9,25 +8,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // async
   }
-});
 
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'capturePage') {
-    chrome.tabs.captureVisibleTab(null, { format: 'jpeg' }, (dataUrl) => {
+    const dataUrl = request.dataUrl;
+    if (dataUrl) {
       chrome.storage.local.get('screenshots', (data) => {
         const screenshots = data.screenshots || [];
         screenshots.push(dataUrl);
-        chrome.storage.local.set({ screenshots: screenshots }, () => {
+        chrome.storage.local.set({ screenshots }, () => {
           console.log('Screenshot saved, total:', screenshots.length);
           sendResponse({ status: 'screenshot saved' });
         });
       });
-    });
-    return true; // Indicates that the response is sent asynchronously
-  } else if (request.action === 'savingFinished') {
+    } else {
+      console.error('No image data received.');
+      sendResponse({ status: 'error', message: 'No dataUrl provided' });
+    }
+    return true;
+  }
+
+  if (request.action === 'savingFinished') {
     console.log(`Finished saving pages for "${request.title}".`);
     createZipFile(request.title);
+    sendResponse({ status: 'zip creation started' });
   }
 });
 
@@ -64,7 +67,6 @@ async function createZipFile(bookTitle) {
       filename: `${bookTitle}.cbz`,
       saveAs: true
     }, (downloadId) => {
-      // Revoke the object URL and clear storage
       URL.revokeObjectURL(url);
       chrome.storage.local.set({ screenshots: [] });
     });

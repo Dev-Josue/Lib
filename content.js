@@ -1,6 +1,6 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startSaving') {
-    console.log('Starting to save the book...');
+    console.log('Starting to save the book with improved logic...');
     startSaving();
   }
 });
@@ -10,13 +10,6 @@ function delay(ms) {
 }
 
 async function startSaving() {
-  const nextButton = document.querySelector('.edge-right');
-  if (!nextButton) {
-    console.error('Could not find the next page button.');
-    alert('Could not find the next page button.');
-    return;
-  }
-
   const slider = document.getElementById('reader-slider-range');
   if (!slider) {
       console.error('Could not find the page slider.');
@@ -26,7 +19,6 @@ async function startSaving() {
 
   let isLastPage = false;
 
-  // Get book title
   let bookTitle = document.querySelector('h1')?.innerText || document.querySelector('.title-text')?.innerText || 'Untitled_Book';
   bookTitle = bookTitle.replace(/[^a-zA-Z0-9 ]/g, '').trim();
 
@@ -37,19 +29,38 @@ async function startSaving() {
 
     console.log(`Processing page ${currentPageNum} of ${totalPages}`);
 
-    // Send message to background script to take a screenshot
+    await delay(1500);
+
+    const iframe = document.querySelector('iframe');
+    if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
+      console.error('Could not find the book iframe or its content.');
+      alert('Could not find the book iframe. Cannot continue.');
+      return;
+    }
+
+    // Capture only the visible area of the iframe
+    const canvas = await html2canvas(iframe.contentDocument.body, {
+      allowTaint: true,
+      useCORS: true,
+      width: iframe.clientWidth,
+      height: iframe.clientHeight
+    });
+    const dataUrl = canvas.toDataURL('image/jpeg');
+
     await new Promise(resolve => {
-      chrome.runtime.sendMessage({ action: 'capturePage' }, (response) => {
+      chrome.runtime.sendMessage({ action: 'capturePage', dataUrl: dataUrl }, (response) => {
         console.log('Screenshot response:', response);
         resolve();
       });
     });
 
-    await delay(500); // Small delay after taking screenshot
-
     if (!isLastPage) {
-      nextButton.click();
-      await delay(1000); // wait for page to load
+      // Dispatch the event to the iframe's window
+      iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        keyCode: 39,
+        bubbles: true
+      }));
     }
   }
 
