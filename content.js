@@ -1,6 +1,6 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startSaving') {
-    console.log('Starting to save the book with improved logic...');
+    console.log('Starting to save the book with precise spread capture...');
     startSaving();
   }
 });
@@ -10,42 +10,75 @@ function delay(ms) {
 }
 
 async function startSaving() {
-  const slider = document.getElementById('reader-slider-range');
-  if (!slider) {
-      console.error('Could not find the page slider.');
-      alert('Could not find the page slider.');
-      return;
-  }
-
-  let isLastPage = false;
-
   let bookTitle = document.querySelector('h1')?.innerText || document.querySelector('.title-text')?.innerText || 'Untitled_Book';
   bookTitle = bookTitle.replace(/[^a-zA-Z0-9 ]/g, '').trim();
 
-  while (!isLastPage) {
-    const currentPageNum = parseInt(slider.value, 10);
-    const totalPages = parseInt(slider.max, 10);
-    isLastPage = currentPageNum === totalPages;
+  let previousPageHTML = '';
+  let currentPageHTML = '';
+  let pageCount = 0;
 
-    console.log(`Processing page ${currentPageNum} of ${totalPages}`);
+  while (true) {
+    pageCount++;
+    console.log(`Processing page ${pageCount}`);
 
-    await delay(1500);
+    await delay(2000);
 
     const iframe = document.querySelector('iframe');
     if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
-      console.error('Could not find the book iframe or its content.');
+      console.error('Could not find the book iframe.');
       alert('Could not find the book iframe. Cannot continue.');
       return;
     }
 
-    // Capture only the visible area of the iframe
-    const canvas = await html2canvas(iframe.contentDocument.body, {
+    const iframeDoc = iframe.contentDocument;
+    currentPageHTML = iframeDoc.body.innerHTML;
+
+    if (pageCount > 1 && currentPageHTML === previousPageHTML) {
+      console.log('End of book detected.');
+      break;
+    }
+
+    // Find the specific spread divs
+    const spreadDivs = iframeDoc.querySelectorAll('div[id^="spread_"]');
+    if (spreadDivs.length === 0) {
+        console.warn(`No spread divs found on page ${pageCount}. Turning page to continue.`);
+        previousPageHTML = currentPageHTML;
+        iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', keyCode: 39, bubbles: true }));
+        continue;
+    }
+
+    // Create a temporary container to generate a clean image of the spread
+    const tempContainer = iframeDoc.createElement('div');
+    tempContainer.style.position = 'absolute';
+    tempContainer.style.left = '-9999px'; // Move off-screen
+    tempContainer.style.display = 'inline-block';
+    iframeDoc.body.appendChild(tempContainer);
+
+    let totalWidth = 0;
+    let maxHeight = 0;
+
+    // Clone all spread divs into the container
+    spreadDivs.forEach(div => {
+        const clone = div.cloneNode(true);
+        clone.style.transform = ''; // Remove any transforms
+        tempContainer.appendChild(clone);
+        totalWidth += div.offsetWidth;
+        if (div.offsetHeight > maxHeight) {
+            maxHeight = div.offsetHeight;
+        }
+    });
+
+    // Capture the temporary container
+    const canvas = await html2canvas(tempContainer, {
       allowTaint: true,
       useCORS: true,
-      width: iframe.clientWidth,
-      height: iframe.clientHeight
+      width: totalWidth,
+      height: maxHeight,
     });
     const dataUrl = canvas.toDataURL('image/jpeg');
+
+    // Clean up by removing the container
+    iframeDoc.body.removeChild(tempContainer);
 
     await new Promise(resolve => {
       chrome.runtime.sendMessage({ action: 'capturePage', dataUrl: dataUrl }, (response) => {
@@ -54,14 +87,13 @@ async function startSaving() {
       });
     });
 
-    if (!isLastPage) {
-      // Dispatch the event to the iframe's window
-      iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'ArrowRight',
-        keyCode: 39,
-        bubbles: true
-      }));
-    }
+    previousPageHTML = currentPageHTML;
+
+    iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      keyCode: 39,
+      bubbles: true
+    }));
   }
 
   console.log('Finished processing all pages.');
