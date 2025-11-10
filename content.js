@@ -1,12 +1,17 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startSaving') {
-    console.log('Starting to save the book with precise spread capture...');
+    console.log('Starting to save the book with specific iframe selection...');
     startSaving();
   }
 });
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getIframeByXPath(xpath) {
+  const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+  return result.singleNodeValue;
 }
 
 async function startSaving() {
@@ -23,9 +28,11 @@ async function startSaving() {
 
     await delay(2000);
 
-    const iframe = document.querySelector('iframe');
+    const iframeXPath = "/html/body/div[1]/div[2]/div/div[1]/div[1]/div/div/div[2]/div[1]/div/div/iframe";
+    const iframe = getIframeByXPath(iframeXPath);
+
     if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
-      console.error('Could not find the book iframe.');
+      console.error('Could not find the book iframe using the provided XPath.');
       alert('Could not find the book iframe. Cannot continue.');
       return;
     }
@@ -38,7 +45,6 @@ async function startSaving() {
       break;
     }
 
-    // Find the specific spread divs
     const spreadDivs = iframeDoc.querySelectorAll('div[id^="spread_"]');
     if (spreadDivs.length === 0) {
         console.warn(`No spread divs found on page ${pageCount}. Turning page to continue.`);
@@ -47,20 +53,18 @@ async function startSaving() {
         continue;
     }
 
-    // Create a temporary container to generate a clean image of the spread
     const tempContainer = iframeDoc.createElement('div');
     tempContainer.style.position = 'absolute';
-    tempContainer.style.left = '-9999px'; // Move off-screen
+    tempContainer.style.left = '-9999px';
     tempContainer.style.display = 'inline-block';
     iframeDoc.body.appendChild(tempContainer);
 
     let totalWidth = 0;
     let maxHeight = 0;
 
-    // Clone all spread divs into the container
     spreadDivs.forEach(div => {
         const clone = div.cloneNode(true);
-        clone.style.transform = ''; // Remove any transforms
+        clone.style.transform = '';
         tempContainer.appendChild(clone);
         totalWidth += div.offsetWidth;
         if (div.offsetHeight > maxHeight) {
@@ -68,7 +72,6 @@ async function startSaving() {
         }
     });
 
-    // Capture the temporary container
     const canvas = await html2canvas(tempContainer, {
       allowTaint: true,
       useCORS: true,
@@ -77,7 +80,6 @@ async function startSaving() {
     });
     const dataUrl = canvas.toDataURL('image/jpeg');
 
-    // Clean up by removing the container
     iframeDoc.body.removeChild(tempContainer);
 
     await new Promise(resolve => {
