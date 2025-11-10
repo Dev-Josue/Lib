@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Overdrive Book Saver",
+  "version": "1.0",
+  "description": "Saves Overdrive books as CBZ files.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.overdrive.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
