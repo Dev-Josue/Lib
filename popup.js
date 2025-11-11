@@ -1,14 +1,137 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const startSavingButton = document.getElementById('start-saving');
+  const scanButton = document.getElementById('scan-pages');
+  const detectedPagesContainer = document.getElementById('detected-pages');
+  const previewsContainer = document.getElementById('previews');
+  const pageCountSpan = document.getElementById('page-count');
+  const titleInput = document.getElementById('book-title');
+  const createCbzButton = document.getElementById('create-cbz');
+  const clearSessionButton = document.getElementById('clear-session');
 
-  startSavingButton.addEventListener('click', () => {
-    // Clear any previous screenshots before starting a new session
-    chrome.runtime.sendMessage({ action: 'clearScreenshots' }, (response) => {
-      console.log('Clearing screenshots:', response);
-      // Once cleared, start the saving process in the active tab
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'startSaving' });
-      });
+  // Load initial state from storage and then scan for title
+  loadSession().then(scanForTitle);
+
+  scanButton.addEventListener('click', () => {
+    sendMessageToContentScript({ action: 'scanForPages' }, (response) => {
+      if (response && response.spreads) {
+        renderDetectedPages(response.spreads);
+      } else {
+        detectedPagesContainer.innerHTML = '<p>No pages found on the current spread.</p>';
+      }
     });
   });
+
+  createCbzButton.addEventListener('click', () => {
+    const title = titleInput.value.trim() || 'Untitled Book';
+    chrome.runtime.sendMessage({ action: 'createCbz', title: title }, (res) => {
+        alert('CBZ creation started! Your download will begin shortly.');
+    });
+  });
+
+  clearSessionButton.addEventListener('click', () => {
+    chrome.storage.local.set({ screenshots: [], bookTitle: '' }, () => {
+      loadSession();
+      detectedPagesContainer.innerHTML = '';
+      alert('Session cleared!');
+    });
+  });
+
+  titleInput.addEventListener('input', () => {
+      chrome.storage.local.set({ bookTitle: titleInput.value });
+  });
+
+  function scanForTitle() {
+      // Only scan for title if it's not already set
+      if (titleInput.value.trim() === '') {
+          sendMessageToContentScript({ action: 'scanForTitle' }, (response) => {
+              if (response && response.title) {
+                  titleInput.value = response.title;
+                  chrome.storage.local.set({ bookTitle: response.title });
+              }
+          });
+      }
+  }
+
+  function renderDetectedPages(spreads) {
+    detectedPagesContainer.innerHTML = '';
+    if (spreads.length === 0) {
+        detectedPagesContainer.innerHTML = '<p>No spread divs found.</p>';
+        return;
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = '<h3>Detected Pages:</h3>';
+
+    spreads.forEach(spreadId => {
+      const captureButton = document.createElement('button');
+      captureButton.textContent = `Capture Page ${spreadId}`;
+      captureButton.onclick = () => {
+        captureButton.textContent = 'Capturing...';
+        captureButton.disabled = true;
+        sendMessageToContentScript({ action: 'capturePage', spreadId: spreadId }, (response) => {
+          if (response && response.dataUrl) {
+            chrome.storage.local.get('screenshots', (data) => {
+                const screenshots = data.screenshots || [];
+                screenshots.push(response.dataUrl);
+                chrome.storage.local.set({ screenshots }, () => {
+                    loadSession();
+                    captureButton.textContent = 'Captured!';
+                });
+            });
+          } else {
+              captureButton.textContent = 'Capture Failed';
+          }
+        });
+      };
+      container.appendChild(captureButton);
+    });
+    detectedPagesContainer.appendChild(container);
+  }
+
+  function loadSession() {
+      return new Promise(resolve => {
+          chrome.storage.local.get(['screenshots', 'bookTitle'], (data) => {
+              const screenshots = data.screenshots || [];
+              const bookTitle = data.bookTitle || '';
+
+              titleInput.value = bookTitle;
+              renderPreviews(screenshots);
+              resolve();
+          });
+      });
+  }
+
+  function renderPreviews(screenshots) {
+    previewsContainer.innerHTML = '';
+    pageCountSpan.textContent = screenshots.length;
+
+    if (screenshots.length === 0) {
+      previewsContainer.innerHTML = '<p>No pages captured yet.</p>';
+      return;
+    }
+
+    screenshots.forEach((dataUrl, index) => {
+      const item = document.createElement('div');
+      item.className = 'preview-item';
+
+      const img = document.createElement('img');
+      img.src = dataUrl;
+
+      const label = document.createElement('p');
+      label.textContent = `Page ${index + 1}`;
+
+      item.appendChild(img);
+      item.appendChild(label);
+      previewsContainer.appendChild(item);
+    });
+  }
+
+  function sendMessageToContentScript(message, callback) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+            chrome.tabs.sendMessage(tabs[0].id, message, callback);
+        } else {
+            console.error("Could not find active tab.");
+        }
+    });
+  }
 });

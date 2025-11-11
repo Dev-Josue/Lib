@@ -1,36 +1,10 @@
 importScripts('jszip.min.js');
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'clearScreenshots') {
-    chrome.storage.local.set({ screenshots: [] }, () => {
-      console.log('Screenshots cleared from storage.');
-      sendResponse({ status: 'cleared' });
-    });
-    return true; // async
-  }
-
-  if (request.action === 'capturePage') {
-    const dataUrl = request.dataUrl;
-    if (dataUrl) {
-      chrome.storage.local.get('screenshots', (data) => {
-        const screenshots = data.screenshots || [];
-        screenshots.push(dataUrl);
-        chrome.storage.local.set({ screenshots }, () => {
-          console.log('Screenshot saved, total:', screenshots.length);
-          sendResponse({ status: 'screenshot saved' });
-        });
-      });
-    } else {
-      console.error('No image data received.');
-      sendResponse({ status: 'error', message: 'No dataUrl provided' });
-    }
-    return true;
-  }
-
-  if (request.action === 'savingFinished') {
-    console.log(`Finished saving pages for "${request.title}".`);
+  if (request.action === 'createCbz') {
+    console.log(`Received request to create CBZ file with title: "${request.title}"`);
     createZipFile(request.title);
-    sendResponse({ status: 'zip creation started' });
+    sendResponse({ status: 'CBZ creation process started' });
   }
 });
 
@@ -48,6 +22,7 @@ async function createZipFile(bookTitle) {
     const screenshots = data.screenshots || [];
     if (screenshots.length === 0) {
       console.error('No screenshots found to create a zip file.');
+      // Optionally, send a message back to the popup to inform the user.
       return;
     }
 
@@ -62,13 +37,17 @@ async function createZipFile(bookTitle) {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
 
+    // Use chrome.downloads.download to save the file
     chrome.downloads.download({
       url: url,
-      filename: `${bookTitle}.cbz`,
-      saveAs: true
+      filename: `${bookTitle}.cbz` // Automatically saves to the Downloads folder
     }, (downloadId) => {
+      // After the download starts, revoke the object URL to free up memory.
       URL.revokeObjectURL(url);
-      chrome.storage.local.set({ screenshots: [] });
+
+      // Clear the storage for the next book.
+      // Note: We might want to make this clearing optional or user-triggered in the future.
+      chrome.storage.local.set({ screenshots: [], bookTitle: '' });
     });
   });
 }

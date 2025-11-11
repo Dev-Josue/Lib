@@ -4,14 +4,91 @@
   <title>Overdrive Book Saver</title>
   <style>
     body {
-      width: 200px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      width: 400px;
+      padding: 10px;
+      color: #333;
+    }
+    h1 {
+      font-size: 1.2em;
       text-align: center;
+      margin-top: 0;
+    }
+    .controls, .metadata, .actions {
+      margin-bottom: 15px;
+    }
+    #book-title {
+      width: 95%;
+      padding: 5px;
+      margin-top: 5px;
+    }
+    button {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      background-color: #f0f0f0;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #e0e0e0;
+    }
+    #scan-pages {
+        width: 100%;
+    }
+    #create-cbz, #clear-session {
+      width: 48%;
+    }
+    #previews {
+      border: 1px solid #ddd;
+      min-height: 100px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 5px;
+      background-color: #fafafa;
+    }
+    .preview-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .preview-item img {
+      width: 100px;
+      height: auto;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+    }
+    .preview-item p {
+        font-size: 0.9em;
     }
   </style>
 </head>
 <body>
   <h1>Overdrive Book Saver</h1>
-  <button id="start-saving">Start Saving</button>
+
+  <div class="metadata">
+    <label for="book-title">Book Title:</label>
+    <input type="text" id="book-title" placeholder="Enter book title...">
+  </div>
+
+  <div class="controls">
+    <button id="scan-pages">Scan for Pages on Current Spread</button>
+  </div>
+
+  <div id="detected-pages"></div>
+
+  <div class="previews-section">
+    <h3>Captured Pages (<span id="page-count">0</span>)</h3>
+    <div id="previews">
+      <p>No pages captured yet.</p>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="create-cbz">Create CBZ File</button>
+    <button id="clear-session">Clear Session</button>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
