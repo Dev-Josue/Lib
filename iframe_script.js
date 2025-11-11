@@ -20,8 +20,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'capturePage') {
     console.log(`Iframe script: Capturing page spread: ${request.spreadId}`);
-    captureSpread(request.spreadId).then(dataUrl => {
-      sendResponse({ dataUrl });
+    captureSpread(request.spreadId).then(response => {
+      // response will be { dataUrl: ... } on success or { error: ... } on failure
+      sendResponse(response);
     });
     return true; // Indicate async response
   }
@@ -36,14 +37,32 @@ async function captureSpread(spreadId) {
   const spreadDiv = document.getElementById(spreadId);
 
   if (!spreadDiv) {
-    console.error(`Iframe script: Could not find spread div with ID: ${spreadId}`);
-    return null;
+    const errorMsg = `Could not find spread div with ID: ${spreadId}`;
+    console.error(`Iframe script: ${errorMsg}`);
+    return { error: errorMsg };
   }
 
-  const canvas = await html2canvas(spreadDiv, {
-    allowTaint: true,
-    useCORS: true,
-  });
+  // Highlight the div to give user feedback
+  const originalBorderStyle = spreadDiv.style.border;
+  spreadDiv.style.border = '3px solid red';
 
-  return canvas.toDataURL('image/jpeg');
+  // Remove the highlight after 2 seconds
+  setTimeout(() => {
+    spreadDiv.style.border = originalBorderStyle;
+  }, 2000);
+
+  try {
+    const canvas = await html2canvas(spreadDiv, {
+      allowTaint: true,
+      useCORS: true,
+      logging: true // Enable logging for debugging
+    });
+    return { dataUrl: canvas.toDataURL('image/jpeg') };
+  } catch (error) {
+    const errorMsg = `html2canvas failed: ${error.message}`;
+    console.error(`Iframe script: ${errorMsg}`, error);
+    // Restore border immediately on error
+    spreadDiv.style.border = originalBorderStyle;
+    return { error: errorMsg };
+  }
 }

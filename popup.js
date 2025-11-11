@@ -7,8 +7,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const createCbzButton = document.getElementById('create-cbz');
   const clearSessionButton = document.getElementById('clear-session');
 
-  // Load initial state from storage and then scan for title
-  loadSession().then(scanForTitle);
+  // On startup, check if the content script is ready.
+  checkContentScriptReady();
+
+  function checkContentScriptReady() {
+    sendMessageToContentScript({ action: 'isContentScriptReady' }, (response) => {
+      if (response && response.status === 'ready') {
+        console.log('Content script is ready.');
+        // Once ready, load the session and enable UI.
+        loadSession().then(scanForTitle);
+        scanButton.disabled = false;
+        titleInput.disabled = false;
+      } else {
+        // If not ready, show a message and retry after a short delay.
+        detectedPagesContainer.innerHTML = '<p>Waiting for page to load...</p>';
+        scanButton.disabled = true;
+        titleInput.disabled = true;
+        setTimeout(checkContentScriptReady, 500);
+      }
+    });
+  }
 
   scanButton.addEventListener('click', () => {
     sendMessageToContentScript({ action: 'scanForPages' }, (response) => {
@@ -77,8 +95,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     captureButton.textContent = 'Captured!';
                 });
             });
+          } else if (response && response.error) {
+            alert(`Capture failed: ${response.error}`);
+            captureButton.textContent = `Capture Page ${spreadId}`;
+            captureButton.disabled = false;
           } else {
-              captureButton.textContent = 'Capture Failed';
+            alert('Capture failed due to an unknown error.');
+            captureButton.textContent = `Capture Page ${spreadId}`;
+            captureButton.disabled = false;
           }
         });
       };
