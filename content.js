@@ -1,26 +1,24 @@
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'startSaving') {
-    console.log('Starting to save the book with polling for iframe...');
-    startSaving();
-  }
-});
+// Only run this script in the top-level frame to avoid multiple executions
+if (window.self === window.top) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'startSaving') {
+      console.log('Starting to save the book in the main frame...');
+      startSaving();
+      // Keep the message channel open for the async response
+      return true;
+    }
+  });
+}
 
 function getIframeByXPath(xpath) {
   const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
   return result.singleNodeValue;
 }
 
-/**
- * Waits for an element to exist in the DOM.
- * @param {string} xpath The XPath of the element to wait for.
- * @param {number} timeout The maximum time to wait in milliseconds.
- * @returns {Promise<Element>} A promise that resolves with the element when it is found.
- */
 function waitForElement(xpath, timeout = 15000) {
   return new Promise((resolve, reject) => {
-    const intervalTime = 100; // Check every 100ms
+    const intervalTime = 100;
     let elapsedTime = 0;
-
     const interval = setInterval(() => {
       const element = getIframeByXPath(xpath);
       if (element && element.contentDocument && element.contentDocument.body) {
@@ -30,7 +28,7 @@ function waitForElement(xpath, timeout = 15000) {
         elapsedTime += intervalTime;
         if (elapsedTime >= timeout) {
           clearInterval(interval);
-          reject(new Error(`Timeout: Element with XPath "${xpath}" not found or not ready after ${timeout}ms`));
+          reject(new Error(`Timeout: Element with XPath "${xpath}" not found after ${timeout}ms`));
         }
       }
     }, intervalTime);
@@ -45,12 +43,12 @@ async function startSaving() {
   let iframe;
 
   try {
-    console.log('Waiting for the book iframe to load...');
-    iframe = await waitForElement(iframeXPath, 20000); // Wait up to 20 seconds
-    console.log('Book iframe found. Starting capture process.');
+    console.log('Waiting for the book iframe...');
+    iframe = await waitForElement(iframeXPath, 20000);
+    console.log('Book iframe found. Starting process.');
   } catch (error) {
     console.error(error.message);
-    alert('Could not find the book iframe. Please make sure the book is fully loaded and try again.');
+    alert('Could not find the book iframe. Please ensure the book is loaded and try again.');
     return;
   }
 
@@ -62,7 +60,6 @@ async function startSaving() {
     pageCount++;
     console.log(`Processing page ${pageCount}`);
 
-    // Delay for page content to settle after turning
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const iframeDoc = iframe.contentDocument;
@@ -75,7 +72,7 @@ async function startSaving() {
 
     const spreadDivs = iframeDoc.querySelectorAll('div[id^="spread_"]');
     if (spreadDivs.length === 0) {
-        console.warn(`No spread divs found on page ${pageCount}. Turning page to continue.`);
+        console.warn(`No spread divs found on page ${pageCount}. Continuing.`);
         previousPageHTML = currentPageHTML;
         iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', keyCode: 39, bubbles: true }));
         continue;
@@ -117,8 +114,9 @@ async function startSaving() {
       });
     });
 
-    previousPageHTML = currentPageHTML;
+    previousPageHTML = currentPage.innerHTML;
 
+    // Dispatch event to the iframe's window to turn the page
     iframe.contentWindow.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'ArrowRight',
       keyCode: 39,
